@@ -9,8 +9,7 @@ from discord.ext import commands
 
 import lib.roll_dice
 import lib.doc_list
-import lib.full_calendar
-import lib.google_sheets_import
+from lib.world_state import WorldState
 
 description = '''bots'''
 
@@ -24,15 +23,6 @@ if not args.debug:
 
 ############
 # Helpers
-def fetch_data():
-  global data
-  (success, message, fetched_data) = lib.google_sheets_import.fetch_data()
-  if success:
-    (success, cal_message) = cal.AddAdventures(fetched_data.adventures)
-    if not success:
-      return (success, cal_message, data)
-  return (success, message, fetched_data)
-
 def say_with_mention(context, message):
   return bot.say('{} {}'.format(context.message.author.mention, message))
 
@@ -41,12 +31,7 @@ def say_with_mention(context, message):
 
 # TODO try to make only a *single* global object, containing adventures, calendar, etc
 # Any failures here should fail before startup.
-cal = lib.full_calendar.FullCalendar([])
-data = None
-(success, message, data) = fetch_data()
-if not data:
-  print('Error fetching data: {}'.format(message))
-  sys.exit(1)
+world_state = WorldState()
 
 ############
 # Commands
@@ -57,7 +42,7 @@ if not args.debug:
     '''current (in-game) date
     
     In-game/real-world dates matched up using an adventure list from Google Docs.'''
-    await say_with_mention(context, 'Today\'s date is {}.'.format(cal.RealToInGame(datetime.date.today())))
+    await say_with_mention(context, 'Today\'s date is {}.'.format(world_state.RealToInGame(datetime.date.today())))
 
   @bot.command(pass_context=True)
   async def roll(context, *diceStrings):
@@ -82,21 +67,21 @@ if not args.debug:
     '''(admin-only) refresh underlying data from Google Docs.
     
     p.s. not actually admin only but maybe don't fool around with it ok?'''
-    global data
-    (success, message, data) = fetch_data()
+    global world_state
+    (success, message) = world_state.fetch_data()
     if success:
-      await say_with_mention(context, '{}\n{} adventures, {} characters'.format(message, len(data.adventures), len(data.characters)))
+      await say_with_mention(context, '{}\n{} adventures, {} characters'.format(message, len(world_state.adventures), len(world_state.characters)))
     else:
       await say_with_mention(context, 'Error fetching data: {}'.format(message))
 
   @bot.command(pass_context=True, aliases=['adv'])
   async def adventures(context, max_to_print=5):
     '''show known adventures'''
-    if not data.adventures or len(data.adventures) == 0:
+    if not world_state.adventures or len(world_state.adventures) == 0:
       await say_with_mention(context, 'No adventures known.')
     else:
-      num_to_print=min(max_to_print, len(data.adventures))
-      selected_adventures=data.adventures[-num_to_print:]
+      num_to_print = min(max_to_print, len(world_state.adventures))
+      selected_adventures = world_state.adventures[-num_to_print:]
       message='Adventures:\n{}'.format(
         '\n'.join([str(x) for x in selected_adventures]))
       await say_with_mention(context, message)

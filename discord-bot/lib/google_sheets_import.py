@@ -10,7 +10,6 @@ from oauth2client import tools
 from oauth2client.file import Storage
 
 from lib import in_game_calendar
-import lib.data
 from lib import adventure
 
 # If modifying these scopes, delete your previously saved credentials
@@ -59,27 +58,24 @@ def fetch_adventures(spreadsheetId):
     if len(row) not in (4, 5):
       message = 'Bad row {}: {}'.format(i+1, pprint.pformat(row))
       return (message, None)
+    if len(row) == 4:
+      row.append('')
     this_adventure = adventure.Adventure(
         name=row[0],
         start_date=in_game_calendar.InGameDate.FromString(row[1]),
         end_date=in_game_calendar.InGameDate.FromString(row[2]),
         real_date=datetime.datetime.strptime(row[3], '%Y-%m-%d').date())
-    if len(row) == 5:
-      this_adventure.party_names = row[4].split(', ')
     adventures.append(this_adventure)
   return (None, adventures)
 
 def fetch_data():
   spreadsheetId = '1sbTwpAv3zYglLGawRWADFXtSmLUihLcSPWbgc2ZuOQk'
-  data = lib.data.Data()
   (message, adventures_result) = fetch_adventures(spreadsheetId)
-  if adventures_result:
-    data.adventures = adventures_result
-  else:
-    return (False, message, None)
+  if not adventures_result:
+    return (False, message, {})
 
   message = 'Fetched successfully.'
-  return (True, message, data)
+  return (True, message, {'adventures': adventures_result})
 
 _credentials = _get_credentials()
 _http = _credentials.authorize(httplib2.Http())
