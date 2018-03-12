@@ -1,8 +1,13 @@
+import datetime
+import pdb
+
 import lib.adventure
 import lib.character
-import lib.full_calendar
 import lib.google_sheets_import
-import pdb
+
+from lib import calendar_converter
+from lib import in_game_calendar
+
 
    # [
    #     adventure.Adventure('Eastern coast lighthouse',
@@ -19,7 +24,11 @@ class WorldState:
   def __init__(self):
     self.adventures = []
     self.characters = []
-    self.calendar = lib.full_calendar.FullCalendar()
+
+    # These should be overwritten by adventures, but we might as well have a sane default.
+    self.real_start_date = datetime.date(2018, 3, 4)
+    self.in_game_start_date = in_game_calendar.InGameDate.FromString('Twyla 14 1252')
+
     (success, message) = self.fetch_data()
     if not success:
       print('Error fetching data during WorldState initialization: ' + message)
@@ -35,35 +44,49 @@ class WorldState:
     return (success, adv_message)
 
   def RealToInGame(self, real_date):
-    return self.calendar.RealToInGame(self.adventures, real_date)
+    return calendar_converter.RealToInGame(self.in_game_start_date,
+        self.real_start_date, self.adventures, real_date)
 
   def InGameToReal(self, in_game):
-    return self.calendar.InGameToReal(self.adventures, in_game)
+    return calendar_converter.InGameToReal(self.in_game_start_date,
+        self.real_start_date, self.adventures, in_game)
 
   #######################
   # Private
-  def _add_adventures(self, adventures):
-    if len(adventures) > 0:
-      self.real_start_date = adventures[0].real_date
-      self.calendar.in_game_start_date = adventures[0].start_date
+  def _add_adventures(self, raw_adventures):
+    if len(raw_adventures) > 0:
       new_adventures = []
-      # TODO redundant code
-      for a in adventures:
-        new_adventures.append(a)
-        in_game_from_real = self.calendar.RealToInGame(adventures, a.real_date)
-        if in_game_from_real != a.start_date:
-          self.adventures = prev_adventures
+      for raw_adv in raw_adventures:
+        adv = lib.adventure.Adventure(
+            name=raw_adv[0],
+            start_date=in_game_calendar.InGameDate.FromString(raw_adv[1]),
+            end_date=in_game_calendar.InGameDate.FromString(raw_adv[2]),
+            real_date=datetime.datetime.strptime(raw_adv[3], '%Y-%m-%d').date(),
+            party_names=raw_adv[4].split(', ') if raw_adv[4] != '' else [])
+        new_adventures.append(adv)
+
+        new_real_start_date = new_adventures[0].real_date
+        new_in_game_start_date = new_adventures[0].start_date
+
+        # Validate
+        in_game_from_real = calendar_converter.RealToInGame(new_in_game_start_date,
+            new_real_start_date, new_adventures, adv.real_date)
+        if in_game_from_real != adv.start_date:
           return (False, 'in-game start date is {}, but real date {} should be {} in-game'.format(
-            a.start_date, a.real_date, in_game_from_real))
-        start_real = self.calendar.InGameToReal(adventures, a.start_date)
-        if start_real != a.real_date:
-          self.adventures = prev_adventures
+            adv.start_date, adv.real_date, in_game_from_real))
+        start_real = calendar_converter.InGameToReal(new_in_game_start_date,
+            new_real_start_date, new_adventures, adv.start_date)
+        if start_real != adv.real_date:
           return (False, 'real date is {}, but in-game start date {} should be {}'.format(
-            a.real_date, a.start_date, start_real))
-        end_real = self.calendar.InGameToReal(adventures, a.end_date)
-        if end_real != a.real_date:
-          self.adventures = prev_adventures
+            adv.real_date, adv.start_date, start_real))
+        end_real = calendar_converter.InGameToReal(new_in_game_start_date,
+            new_real_start_date, new_adventures, adv.end_date)
+        if end_real != adv.real_date:
           return (False, 'real date is {}, but in-game end date {} should be {}'.format(
-            a.real_date, a.end_date, end_real))
+            adv.real_date, adv.end_date, end_real))
+
       self.adventures = new_adventures
+      self.in_game_start_date = new_in_game_start_date
+      self.real_start_date = new_real_start_date
+      in_game_calendar.SetDefaultYear(self.RealToInGame(datetime.date.today()).year)
     return (True, 'success')

@@ -141,7 +141,9 @@ class InGameCalendar:
   def MakeMonth(self, name, numDays):
     return map(lambda d : InGameDay(name, day_of_month=d), range(1, numDays + 1))
 
+# TODO (not blocking anything) make an instance inside WorldState
 _cal = InGameCalendar()
 
 def SetDefaultYear(year):
+  global _cal
   _cal.default_year = year

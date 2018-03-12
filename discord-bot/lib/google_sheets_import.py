@@ -9,9 +9,6 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
-from lib import in_game_calendar
-from lib import adventure
-
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/sheets.googleapis.com-python-quickstart.json
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
@@ -53,6 +50,8 @@ def fetch_adventures(spreadsheetId):
       spreadsheetId=spreadsheetId, range=rangeName).execute()
   adventures = []
   values = result.get('values', [])
+  if not values:
+    return ('No adventures data', [])
   for i in range(len(values)):
     row = values[i]
     if len(row) not in (4, 5):
@@ -60,13 +59,7 @@ def fetch_adventures(spreadsheetId):
       return (message, None)
     if len(row) == 4:
       row.append('')
-    this_adventure = adventure.Adventure(
-        name=row[0],
-        start_date=in_game_calendar.InGameDate.FromString(row[1]),
-        end_date=in_game_calendar.InGameDate.FromString(row[2]),
-        real_date=datetime.datetime.strptime(row[3], '%Y-%m-%d').date())
-    adventures.append(this_adventure)
-  return (None, adventures)
+  return (None, values)
 
 def fetch_data():
   spreadsheetId = '1sbTwpAv3zYglLGawRWADFXtSmLUihLcSPWbgc2ZuOQk'
