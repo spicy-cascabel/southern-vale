@@ -1,68 +1,39 @@
-# Calendar:
-# DayList: all days, in order
-# Date: Day + year <-> epoch date
-# Day: Month + day
-class InGameDay:
-  def __init__(self, month, day = None, special_name = None):
-    self.month = month
-    if day:
-      self.day = day
-    if special_name:
-      self.special_name = special_name
+import math
+import sys
+import datetime
+import in_game_calendar
+import adventure
 
-  def __str__(self):
-    if special_name:
-      if day:
-        return '{} {} ({})'.format(month, day, special_name)
-      else:
-        return special_name
-    else:
-      return '{} {}'.format(month, day)
-
-class InGameDate:
-  def __init__(self, day, year):
-    self.day = day
-    self.year = year
-
-class Calendar:
+class FullCalendar:
   def __init__(self):
-    days = []
-    days.extend(MakeMonth('Yothh', 30))
-    days[0] = InGameDay('Yotth', day=1, special_name='New Year')
-    days.extend(MakeMonth('Twyla', 31))
-    days.extend(MakeMonth('Rooni', 28))
-    days.append(InGameDay('Rooni', special_name='Midsummer\'s Eve'))
-    days.extend(MakeMonth('Deamce', 30))
-    days.extend(MakeMonth('Cunkur', 28))
-    days.extend(MakeMonth('Abilan', 28))
-    days.append(InGameDay('Abilan', special_name='Harvest Festival'))
-    days.extend(MakeMonth('Fyrgat', 29))
-    days.extend(MakeMonth('Lopar', 30))
-    days.extend(MakeMonth('Rachi', 28))
-    days.append(InGameDay('Abilan', special_name='Ancestor\'s Day'))
-    days.extend(MakeMonth('Buold', 31))
-    days.extend(MakeMonth('Vlut', 28))
-    days.extend(MakeMonth('Unnyt', 27))
-    days.append(InGameDay('Unnyt', special_name='Beginning of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Second Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Third Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Fourth Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Fifth Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Sixth Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Seventh Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='Eighth Day of Candlenights'))
-    days.append(InGameDay('Unnyt', special_name='End of Candlenights'))
+    self.real_start_date = datetime.date(2018, 3, 4)
+    self.in_game_start_date = in_game_calendar.InGameDate.FromString('Twyla 14 1252')
+    self.adventures = [
+        adventure.Adventure('Eastern coast lighthouse', [],
+          in_game_calendar.InGameDate.FromString('Twyla 14 1252'),
+          in_game_calendar.InGameDate.FromString('Twyla 18 1252'),
+          datetime.date(2018, 3, 4)),
+        adventure.Adventure('Downtime catchup', [],
+          in_game_calendar.InGameDate.FromString('Twyla 19 1252'),
+          in_game_calendar.InGameDate.FromString('Twyla 25 1252'),
+          datetime.date(2018, 3, 5))
+        ]
 
-    dayMap = {}
-    for i in range(0, len(days) - 1):
-      dayMap[str(days[i])] = i
+    for a in self.adventures:
+      if (self.InGameToReal(a.start_date) != a.real_date or
+          self.InGameToReal(a.end_date) != a.real_date or
+          self.RealToInGame(a.real_date) != a.start_date):
+        sys.exit(1)
 
-  def MakeMonth(self, name, numDays):
-    return map(lambda d : InGameDay(name, day=d), range(numDays))
+    in_game_calendar.SetDefaultYear(self.RealToInGame(datetime.date.today()).year)
 
-  # date + numDays
-  # date2 - date1
 
-# real world <-> in-world
-#   adventure offset list
-#   real-world date check
+  def RealToInGame(self, real_date):
+    return (self.in_game_start_date + (real_date - self.real_start_date).days +
+      sum([a.end_date - a.start_date for a in self.adventures if a.real_date < real_date]))
+
+  def InGameToReal(self, in_game_date):
+    return self.real_start_date + datetime.timedelta(
+        in_game_date - self.in_game_start_date -
+        sum([min(a.end_date, in_game_date) - a.start_date
+          for a in self.adventures if in_game_date >= a.start_date]))
