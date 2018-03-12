@@ -1,59 +1,110 @@
 #!/usr/bin/python3
+import sys
+import datetime
+import pprint
+import argparse
+
 import discord
 from discord.ext import commands
-import sys
 
-import roll_dice
-import doc_list
-import calendar
-import datetime
+import lib.roll_dice
+import lib.doc_list
+import lib.full_calendar
+import lib.google_sheets_import
 
 description = '''bots'''
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or('!!!'))
+parser = argparse.ArgumentParser()
+parser.add_argument('secrets_dir', help='directory containing client secrets')
+parser.add_argument('--debug', help='debug mode (don\'t run bot)', action="store_true")
+args = parser.parse_args()
 
-cal = calendar.FullCalendar()
+if not args.debug:
+  bot = commands.Bot(command_prefix=commands.when_mentioned_or('!!!'))
+
+############
+# Helpers
+def fetch_data():
+  global data
+  (success, message, fetched_data) = lib.google_sheets_import.fetch_data()
+  if success:
+    (success, cal_message) = cal.AddAdventures(fetched_data.adventures)
+    if not success:
+      return (success, cal_message, data)
+  return (success, message, fetched_data)
 
 def say_with_mention(context, message):
   return bot.say('{} {}'.format(context.message.author.mention, message))
 
-@bot.command(pass_context=True, aliases=['date'])
-async def today(context):
-  '''Reports the current (in-game) date'''
-  await say_with_mention(context, 'Today\'s date is {}.'.format(cal.RealToInGame(datetime.date.today())))
+############
+# Setup
 
-@bot.command(pass_context=True)
-async def roll(context, *diceStrings):
-  '''rolls dice (given input like 2d6 or 5+1d20 or 3d6+1d4)'''
-  await say_with_mention(context, 'rolled {}'.format(roll_dice.rollDice(''.join(diceStrings))))
-
-@bot.command(pass_context=True)
-async def finddoc(context, name):
-  await say_with_mention(context, doc_list.find_by_name(name))
-
-# desired commands:
-#
-#   adventure (adv)
-#     add <summary> <real-date> <in-game end date> <characters> (start date assumed to match; return id)
-#     edit <id> <normal adventure args?>
-#   ....or add->id; edit summary <...>; edit real-date <...>; ...
-#     list (return ids)
-#     remove <id>
-#
-#   character (char)
-#     list
-#     add
-#     edit
-#       level
-#       set-nicknames
-#     downtime spend <num days> <note>
-#     downtime report
-
-# Run
-if len(sys.argv) != 2:
-  print('usage: {} <token>'.format(sys.argv[0]))
+# TODO try to make only a *single* global object, containing adventures, calendar, etc
+# Any failures here should fail before startup.
+cal = lib.full_calendar.FullCalendar([])
+data = None
+(success, message, data) = fetch_data()
+if not data:
+  print('Error fetching data: {}'.format(message))
   sys.exit(1)
 
-token = sys.argv[1]
+############
+# Commands
 
-bot.run(token)
+if not args.debug:
+  @bot.command(pass_context=True, aliases=['date'])
+  async def today(context):
+    '''current (in-game) date
+    
+    In-game/real-world dates matched up using an adventure list from Google Docs.'''
+    await say_with_mention(context, 'Today\'s date is {}.'.format(cal.RealToInGame(datetime.date.today())))
+
+  @bot.command(pass_context=True)
+  async def roll(context, *diceStrings):
+    '''Rolls dice
+    
+    Sample valid inputs:
+    2d6
+    5+1d20
+    3d6 + 1d4'''
+    await say_with_mention(context, 'rolled {}'.format(lib.roll_dice.rollDice(''.join(diceStrings))))
+
+  @bot.command(pass_context=True, aliases=['finddoc'])
+  async def finddocs(context, name):
+    await say_with_mention(context, lib.doc_list.find_by_name(name))
+
+  @bot.command(pass_context=True, aliases=['listdoc'])
+  async def listdocs(context):
+    await say_with_mention(context, lib.doc_list.list_all())
+
+  @bot.command(pass_context=True, hidden=True)
+  async def refresh_data(context):
+    '''(admin-only) refresh underlying data from Google Docs.
+    
+    p.s. not actually admin only but maybe don't fool around with it ok?'''
+    global data
+    (success, message, data) = fetch_data()
+    if success:
+      await say_with_mention(context, '{}\n{} adventures, {} characters'.format(message, len(data.adventures), len(data.characters)))
+    else:
+      await say_with_mention(context, 'Error fetching data: {}'.format(message))
+
+  @bot.command(pass_context=True, aliases=['adv'])
+  async def adventures(context, max_to_print=5):
+    '''show known adventures'''
+    if not data.adventures or len(data.adventures) == 0:
+      await say_with_mention(context, 'No adventures known.')
+    else:
+      num_to_print=min(max_to_print, len(data.adventures))
+      selected_adventures=data.adventures[-num_to_print:]
+      message='Adventures:\n{}'.format(
+        '\n'.join([str(x) for x in selected_adventures]))
+      await say_with_mention(context, message)
+
+############
+# Run
+
+if not args.debug:
+  with open('{}/bot-token'.format(args.secrets_dir)) as bot_token_file:
+    token = bot_token_file.read().strip()
+  bot.run(token)

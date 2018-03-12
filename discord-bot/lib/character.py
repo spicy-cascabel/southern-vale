@@ -1,7 +1,4 @@
-# class Character:
-# name, adventures, downtime activities
-
-def Character:
+class Character:
   def __init__(self, name, nicknames, race_class):
     self.name = name
     self.nicknames = nicknames
