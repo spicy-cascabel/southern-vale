@@ -3,6 +3,8 @@ import sys
 import datetime
 import pprint
 import argparse
+import pdb
+import pytz
 
 import discord
 from discord.ext import commands
@@ -42,7 +44,11 @@ if not args.debug:
     '''current (in-game) date
     
     In-game/real-world dates matched up using an adventure list from Google Docs.'''
-    await say_with_mention(context, 'Today\'s date is {}.'.format(world_state.RealToInGame(datetime.date.today())))
+    today = datetime.datetime.now(datetime.timezone.utc).astimezone(
+        pytz.timezone('America/Los_Angeles')).date()
+    await say_with_mention(context,
+        'Today\'s date is {}.'.format(
+          world_state.RealToInGame(today)))
 
   @bot.command(pass_context=True)
   async def roll(context, *diceStrings):
@@ -70,11 +76,14 @@ if not args.debug:
     global world_state
     (success, message) = world_state.fetch_data()
     if success:
-      await say_with_mention(context, '{}\n{} adventures, {} characters'.format(message, len(world_state.adventures), len(world_state.characters)))
+      await say_with_mention(context,
+          '{}\n{} adventures, {} characters'.format(message,
+            len(world_state.adventures),
+            len(world_state.character_list.characters)))
     else:
       await say_with_mention(context, 'Error fetching data: {}'.format(message))
 
-  @bot.command(pass_context=True, aliases=['adv'])
+  @bot.command(pass_context=True, aliases=['adv', 'adventure', 'advs'])
   async def adventures(context, max_to_print=5):
     '''show known adventures'''
     if not world_state.adventures or len(world_state.adventures) == 0:
@@ -85,6 +94,41 @@ if not args.debug:
       message='Adventures:\n{}'.format(
         '\n'.join([str(x) for x in selected_adventures]))
       await say_with_mention(context, message)
+
+  @bot.command(pass_context=True, aliases=['pcs', 'char', 'character', 'chars'])
+  async def characters(context, max_to_print=20):
+    '''show known player characters'''
+    if not world_state.character_list.characters or len(world_state.character_list.characters) == 0:
+      await say_with_mention(context, 'No characters known.')
+    else:
+      num_to_print = min(max_to_print, len(world_state.character_list.characters))
+      selected_characters = world_state.character_list.characters[-num_to_print:]
+      message='Characters:\n{}'.format(
+        '\n'.join([str(x) for x in selected_characters]))
+      await say_with_mention(context, message)
+
+  @bot.command(pass_context=True)
+  async def downtime(context, character_name=None):
+    '''show total downtime for character (TBD spending time)'''
+    if not character_name:
+      (character, message) = world_state.character_list.find_by_discord_user(context.message.author)
+      if not character:
+        await say_with_mention(context, message)
+        return
+      character_name = character.name
+    await say_with_mention(context, world_state.GetDowntime(character_name))
+
+  @bot.command(pass_context=True)
+  async def me(context):
+    '''show your character entry'''
+    (character, message) = world_state.character_list.find_by_discord_user(context.message.author)
+    if character:
+      await say_with_mention(context, 'you are: {}'.format(str(character)))
+    else:
+      await say_with_mention(context, message)
+
+
+
 
 ############
 # Run

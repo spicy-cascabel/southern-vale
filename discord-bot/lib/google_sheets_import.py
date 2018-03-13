@@ -44,21 +44,39 @@ def _get_credentials():
 
     return _credentials
 
+def strip_cells(values):
+  return [[cell.strip() for cell in row] for row in values]
+
 def fetch_adventures(spreadsheetId):
   rangeName = 'adventures!A2:E'
   result = _service.spreadsheets().values().get(
       spreadsheetId=spreadsheetId, range=rangeName).execute()
   adventures = []
-  values = result.get('values', [])
+  values = strip_cells(result.get('values', []))
   if not values:
     return ('No adventures data', [])
   for i in range(len(values)):
-    row = values[i]
-    if len(row) not in (4, 5):
-      message = 'Bad row {}: {}'.format(i+1, pprint.pformat(row))
+    if len(values[i]) == 4:
+      values[i].append(None)
+    if len(values[i]) != 5:
+      message = 'Bad row {}: {}'.format(i+1, pprint.pformat(values[i]))
       return (message, None)
-    if len(row) == 4:
-      row.append('')
+  return (None, values)
+
+def fetch_characters(spreadsheetId):
+  rangeName = 'characters!A2:D'
+  result = _service.spreadsheets().values().get(
+      spreadsheetId=spreadsheetId, range=rangeName).execute()
+  adventures = []
+  values = strip_cells(result.get('values', []))
+  if not values:
+    return ('No characters data', [])
+  for i in range(len(values)):
+    if len(values[i]) == 3:
+      values[i].append(None)
+    if len(values[i]) != 4:
+      message = 'Bad row {}: {}'.format(i+1, pprint.pformat(values[i]))
+      return (message, None)
   return (None, values)
 
 def fetch_data():
@@ -66,9 +84,16 @@ def fetch_data():
   (message, adventures_result) = fetch_adventures(spreadsheetId)
   if not adventures_result:
     return (False, message, {})
+  (message, characters_result) = fetch_characters(spreadsheetId)
+  if not characters_result:
+    return (False, message, {})
+
+  # TODO fetch characters
 
   message = 'Fetched successfully.'
-  return (True, message, {'adventures': adventures_result})
+  return (True, message,
+      {'adventures': adventures_result,
+       'characters' : characters_result})
 
 _credentials = _get_credentials()
 _http = _credentials.authorize(httplib2.Http())

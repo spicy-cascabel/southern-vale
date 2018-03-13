@@ -1,5 +1,7 @@
 import datetime
 import pdb
+import sys
+import re
 
 import lib.adventure
 import lib.character
@@ -23,7 +25,7 @@ from lib import in_game_calendar
 class WorldState:
   def __init__(self):
     self.adventures = []
-    self.characters = []
+    self.character_list = lib.character.CharacterList()
 
     # These should be overwritten by adventures, but we might as well have a sane default.
     self.real_start_date = datetime.date(2018, 3, 4)
@@ -38,9 +40,19 @@ class WorldState:
     (success, message, fetched_data) = lib.google_sheets_import.fetch_data()
     if not success:
       return (False, message)
+
+    if 'characters' not in fetched_data:
+      return (False, 'No adventures data in fetched data.')
+    (success, char_message) = self._add_raw_characters(fetched_data['characters'])
+    if not success:
+      return char_message
+
     if 'adventures' not in fetched_data:
       return (False, 'No adventures data in fetched data.')
-    (success, adv_message) = self._add_adventures(fetched_data['adventures'])
+    (success, adv_message) = self._add_raw_adventures(fetched_data['adventures'])
+    if not success:
+      return (False, adv_message)
+
     return (success, adv_message)
 
   def RealToInGame(self, real_date):
@@ -51,18 +63,39 @@ class WorldState:
     return calendar_converter.InGameToReal(self.in_game_start_date,
         self.real_start_date, self.adventures, in_game)
 
+  def GetDowntime(self, character_name):
+    char = self.character_list.find_by_name(character_name)
+    if not char:
+      return 'character name not found: "{}"'.format(character_name)
+    downtime_days = (
+        (self.RealToInGame(datetime.date.today()) - self.in_game_start_date) -
+        sum([adv.end_date - adv.start_date + 1 for adv in self.adventures if char.name in adv.party_names]))
+    return 'total downtime days: {}'.format(downtime_days)
+
+
   #######################
   # Private
-  def _add_adventures(self, raw_adventures):
+  def _add_raw_adventures(self, raw_adventures):
     if len(raw_adventures) > 0:
       new_adventures = []
       for raw_adv in raw_adventures:
+        party_names = []
+        if raw_adv[4]:
+          party_names = re.split(', *', raw_adv[4])
+
+        full_party_names = []
+        for name in party_names:
+          char = self.character_list.find_by_name(name)
+          if not char:
+            return (False, 'character name not found: "{}"'.format(name))
+          full_party_names.append(char.name)
+
         adv = lib.adventure.Adventure(
             name=raw_adv[0],
             start_date=in_game_calendar.InGameDate.FromString(raw_adv[1]),
             end_date=in_game_calendar.InGameDate.FromString(raw_adv[2]),
             real_date=datetime.datetime.strptime(raw_adv[3], '%Y-%m-%d').date(),
-            party_names=raw_adv[4].split(', ') if raw_adv[4] != '' else [])
+            party_names=full_party_names)
         new_adventures.append(adv)
 
         new_real_start_date = new_adventures[0].real_date
@@ -90,3 +123,14 @@ class WorldState:
       self.real_start_date = new_real_start_date
       in_game_calendar.SetDefaultYear(self.RealToInGame(datetime.date.today()).year)
     return (True, 'success')
+
+  def _add_raw_characters(self, raw_characters):
+    new_characters = []
+    for raw_c in raw_characters:
+      new_characters.append(lib.character.Character(
+        name=raw_c[0],
+        race_class=raw_c[2],
+        nicknames=re.split(', *', raw_c[1]),
+        discord_id=raw_c[3]))
+    self.character_list.characters = new_characters
+    return (True, None)

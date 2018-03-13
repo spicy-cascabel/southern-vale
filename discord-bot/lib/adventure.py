@@ -7,5 +7,7 @@ class Adventure:
     self.party_names = party_names
 
   def __str__(self):
-    return '{}, {} to {} ({}){}'.format(self.name, self.start_date, self.end_date, self.real_date,
-        ' with ' + ', '.join(self.party_names) if self.party_names else '')
+    s = '{}, {} to {} ({})'.format(self.name, self.start_date, self.end_date, self.real_date)
+    if self.party_names:
+      s += ' with ' + ', '.join(self.party_names)
+    return s
